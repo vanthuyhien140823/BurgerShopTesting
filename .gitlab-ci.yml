@@ -1,0 +1,94 @@
+image: ubuntu:22.04
+
+variables:
+  MAVEN_OPTS: "-Dmaven.repo.local=.m2/repository"
+  MAVEN_CLI_OPTS: "--batch-mode --errors --fail-at-end --show-version"
+
+stages:
+  - test
+
+cache:
+  paths:
+    - .m2/repository
+
+before_script:
+  # Thay thế mirror (nếu mirror gốc bị lỗi)
+  - sed -i 's|http://.*.ubuntu.com|http://archive.ubuntu.com|g' /etc/apt/sources.list
+
+  # Cập nhật APT
+  - apt-get update || (cat /etc/apt/sources.list && echo "APT update failed" && exit 1)
+
+  # Cài đặt các gói cần thiết cho Chrome và dependencies
+  - apt-get install -y --no-install-recommends 
+    wget 
+    unzip 
+    curl 
+    xvfb 
+    openjdk-17-jdk 
+    maven 
+    libglib2.0-0 
+    libnss3 
+    libgconf-2-4 
+    libfontconfig1 
+    libxss1 
+    libappindicator1 
+    libasound2 
+    fonts-liberation 
+    libu2f-udev 
+    libatk-bridge2.0-0 
+    libgtk-3-0
+    libgbm1
+    libx11-xcb1
+    libxcomposite1
+    libxcursor1
+    libxdamage1
+    libxi6
+    libxtst6
+    libxrandr2
+    libxrender1
+    libxss1
+    libnss3
+    libcups2
+    libdrm2
+    libxkbcommon0
+    libxshmfence1
+
+  # Tải và cài đặt Chrome
+  - wget -O chrome.zip https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing/136.0.7103.113/linux64/chrome-linux64.zip
+  - unzip chrome.zip -d /opt/
+  - ln -s /opt/chrome-linux64/chrome /usr/bin/google-chrome
+
+  # Cấu hình ChromeDriver cho Linux
+  - rm -f src/test/resources/chromedriver.exe
+  - mkdir -p src/test/resources
+  - wget -O chromedriver.zip https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing/136.0.7103.113/linux64/chromedriver-linux64.zip
+  - unzip chromedriver.zip -d /tmp/
+  - mv /tmp/chromedriver-linux64/chromedriver src/test/resources/
+  - chmod +x src/test/resources/chromedriver
+
+  # Khởi động Xvfb (màn hình ảo)
+  - export DISPLAY=:99
+  - Xvfb :99 -screen 0 1920x1080x24 &
+
+test:
+  stage: test
+  script:
+    # Kiểm tra cài đặt
+    - echo "Kiểm tra Chrome và dependencies"
+    - google-chrome --version
+    - ldd $(which google-chrome) || true
+    - echo "Kiểm tra ChromeDriver"
+    - src/test/resources/chromedriver --version
+    
+    - echo "Bắt đầu chạy test"
+    - mvn test
+    - echo "Kiểm tra thư mục sau khi test"
+    - ls -la target/surefire-reports/
+  artifacts:
+    when: always
+    paths:
+      - target/
+      - test-output/
+    reports:
+      junit: target/surefire-reports/TEST-*.xml
+    expire_in: 1 week
