@@ -1,45 +1,182 @@
 version: 2.1
 
 jobs:
-  build:
+  test:
     docker:
-      - image: cimg/openjdk:17.0  # Dùng JDK 17
-    working_directory: ~/repo
-
+      - image: ubuntu:22.04
+    environment:
+      MAVEN_OPTS: "-Dmaven.repo.local=.m2/repository"
+      MAVEN_CLI_OPTS: "--batch-mode --errors --fail-at-end --show-version"
+      DISPLAY: ":99"
     steps:
       - checkout
-
-      # Cài đặt Chrome & ChromeDriver
+      
+      - restore_cache:
+          keys:
+            - maven-repo-v1-{{ checksum "pom.xml" }}
+            - maven-repo-v1-
+      
       - run:
-          name: Install Chrome
+          name: Cài đặt dependencies và Chrome
           command: |
-            sudo apt-get update
-            sudo apt-get install -y wget unzip
-            wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-            sudo apt install -y ./google-chrome-stable_current_amd64.deb
-
+            # Thay thế mirror (nếu mirror gốc bị lỗi)
+            sed -i 's|http://.*.ubuntu.com|http://archive.ubuntu.com|g' /etc/apt/sources.list
+            
+            # Cập nhật APT
+            apt-get update || (cat /etc/apt/sources.list && echo "APT update failed" && exit 1)
+            
+            # Cài đặt các gói cần thiết cho Chrome và dependencies
+            DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+              wget \
+              unzip \
+              curl \
+              xvfb \
+              openjdk-17-jdk \
+              maven \
+              libglib2.0-0 \
+              libnss3 \
+              libgconf-2-4 \
+              libfontconfig1 \
+              libxss1 \
+              libappindicator1 \
+              libasound2 \
+              fonts-liberation \
+              libu2f-udev \
+              libatk-bridge2.0-0 \
+              libgtk-3-0 \
+              libgbm1 \
+              libx11-xcb1 \
+              libxcomposite1 \
+              libxcursor1 \
+              libxdamage1 \
+              libxi6 \
+              libxtst6 \
+              libxrandr2 \
+              libxrender1 \
+              libxss1 \
+              libnss3 \
+              libcups2 \
+              libdrm2 \
+              libxkbcommon0 \
+              libxshmfence1
+            
+            # Tải và cài đặt Chrome
+            wget -O chrome.zip https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing/136.0.7103.113/linux64/chrome-linux64.zip
+            unzip chrome.zip -d /opt/
+            ln -s /opt/chrome-linux64/chrome /usr/bin/google-chrome
+            
+            # Cấu hình ChromeDriver cho Linux
+            rm -f src/test/resources/chromedriver.exe
+            mkdir -p src/test/resources
+            wget -O chromedriver.zip https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing/136.0.7103.113/linux64/chromedriver-linux64.zip
+            unzip chromedriver.zip -d /tmp/
+            mv /tmp/chromedriver-linux64/chromedriver src/test/resources/
+            chmod +x src/test/resources/chromedriver
+            
+            # Khởi động Xvfb (màn hình ảo)
+            Xvfb :99 -screen 0 1920x1080x24 &
+            sleep 3
+            # Kiểm tra Xvfb đã chạy
+            ps aux | grep Xvfb | grep -v grep || (echo "Xvfb failed to start" && exit 1)
+            
       - run:
-          name: Install ChromeDriver
+          name: Kiểm tra cài đặt
           command: |
-            CHROME_VERSION=$(google-chrome --version | grep -oE "[0-9]+")
-            DRIVER_VERSION=$(curl -s "https://chromedriver.storage.googleapis.com/LATEST_RELEASE")
-            wget "https://chromedriver.storage.googleapis.com/$DRIVER_VERSION/chromedriver_linux64.zip"
-            unzip chromedriver_linux64.zip
-            sudo mv chromedriver /usr/local/bin/
-            sudo chmod +x /usr/local/bin/chromedriver
-
-      # Build dự án
+            echo "Kiểm tra Chrome và dependencies"
+            google-chrome --version
+            ldd $(which google-chrome) || true
+            echo "Kiểm tra ChromeDriver"
+            src/test/resources/chromedriver --version
+            
       - run:
-          name: Maven clean install
-          command: mvn clean install -DskipTests=false
+          name: Chạy tests
+          command: |
+            # Kiểm tra Xvfb vẫn đang chạy
+            ps aux | grep Xvfb | grep -v grep || (echo "Xvfb is not running" && exit 1)
+            
+            echo "Bắt đầu chạy test"
+            
+            mvn $MAVEN_CLI_OPTS -Dbrowser=Chrome -Dtest=TestSuite.AccountMnt.Login test
+            
 
-      # Chạy test → Nếu muốn chạy testng.xml
+            echo "Kiểm tra thư mục sau khi test"
+            ls -la target/surefire-reports/ || true
+            
+      - save_cache:
+          paths:
+            - .m2/repository
+          key: maven-repo-v1-{{ checksum "pom.xml" }}
+      
+      - store_artifacts:
+          path: target/
+          destination: target
+      
+      - store_artifacts:
+          path: test-output/
+          destination: test-output
+      
       - run:
-          name: Run TestNG Tests
-          command: mvn test -DsuiteXmlFile=testng.xml
+          name: Chuẩn bị test results cho Circle CI (chỉ JUnit XML)
+          command: |
+            # Circle CI chỉ hỗ trợ JUnit XML format (root element: <testsuite>)
+            # TestNG tạo ra nhiều file XML nhưng chỉ file trong junitreports/ là JUnit format
+            
+            # Đảm bảo thư mục surefire-reports tồn tại
+            mkdir -p target/surefire-reports
+            
+            # Tạo thư mục cho Circle CI test results (đảm bảo luôn tồn tại)
+            mkdir -p target/circleci-test-results
+            
+            # Copy các file JUnit XML từ junitreports/ (format hợp lệ cho Circle CI)
+            if [ -d "target/surefire-reports/junitreports" ] && [ -n "$(ls -A target/surefire-reports/junitreports/*.xml 2>/dev/null)" ]; then
+              echo "Copying JUnit XML files from junitreports..."
+              cp target/surefire-reports/junitreports/*.xml target/circleci-test-results/ 2>/dev/null || true
+              echo "Đã copy các file JUnit XML từ junitreports"
+            else
+              echo "Không tìm thấy file trong junitreports, đang tìm file TEST-*.xml ở thư mục gốc..."
+              # Kiểm tra xem có file TEST-*.xml ở thư mục gốc không (có thể là JUnit format)
+              if [ -d "target/surefire-reports" ]; then
+                find target/surefire-reports -maxdepth 1 -name "TEST-*.xml" -type f -exec cp {} target/circleci-test-results/ \; 2>/dev/null || true
+              fi
+            fi
+            
+            # Kiểm tra và hiển thị các file đã copy
+            echo "=== Kiểm tra thư mục circleci-test-results ==="
+            if [ -d "target/circleci-test-results" ]; then
+              ls -la target/circleci-test-results/ || echo "Thư mục trống"
+              
+              # Đếm số file XML
+              FILE_COUNT=$(find target/circleci-test-results -name "*.xml" -type f 2>/dev/null | wc -l)
+              echo "Tổng số file JUnit XML: $FILE_COUNT"
+              
+              if [ "$FILE_COUNT" -eq 0 ]; then
+                echo "Cảnh báo: Không có file JUnit XML nào được tìm thấy"
+                echo "Danh sách các file trong surefire-reports:"
+                find target/surefire-reports -name "*.xml" -type f 2>/dev/null | head -10 || echo "Không có file XML nào"
+              else
+                echo "Đã tìm thấy $FILE_COUNT file JUnit XML, sẵn sàng upload"
+              fi
+            else
+              echo "Lỗi: Không thể tạo thư mục target/circleci-test-results"
+              exit 1
+            fi
+            
+            # Kiểm tra cuối cùng: đảm bảo thư mục tồn tại trước khi store_test_results
+            if [ ! -d "target/circleci-test-results" ]; then
+              echo "Lỗi: Thư mục target/circleci-test-results không tồn tại, đang tạo lại..."
+              mkdir -p target/circleci-test-results
+            fi
+            
+            # Xác nhận thư mục tồn tại
+            echo "Xác nhận: Thư mục target/circleci-test-results tồn tại:"
+            ls -ld target/circleci-test-results || exit 1
+      
+      - store_test_results:
+          path: target/circleci-test-results
 
 workflows:
   version: 2
-  build_and_test:
+  test-workflow:
     jobs:
-      - build
+      - test
+
