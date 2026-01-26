@@ -96,7 +96,7 @@ jobs:
             
             echo "Bắt đầu chạy test"
             
-            mvn $MAVEN_CLI_OPTS -Dtest=TestSuite.AccountMnt.Login test
+            mvn $MAVEN_CLI_OPTS -Dbrowser=Chrome -Dtest=TestSuite.AccountMnt.Login test
 
             echo "Kiểm tra thư mục sau khi test"
             ls -la target/surefire-reports/ || true
