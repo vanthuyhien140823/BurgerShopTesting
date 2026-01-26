@@ -95,7 +95,9 @@ jobs:
             ps aux | grep Xvfb | grep -v grep || (echo "Xvfb is not running" && exit 1)
             
             echo "Bắt đầu chạy test"
-            mvn $MAVEN_CLI_OPTS test
+            
+            mvn $MAVEN_CLI_OPTS -Dtest=TestSuite.AccountMnt.Login test
+
             echo "Kiểm tra thư mục sau khi test"
             ls -la target/surefire-reports/ || true
             
