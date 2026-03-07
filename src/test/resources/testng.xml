@@ -4,8 +4,8 @@
 	<test name="BurgerShopTesting" group-by-instances="true" preserve-order="true">
     	<parameter name = "browser" value = "Chrome"/>  
     	<classes>
-			<!--<class name = "TestSuite.AccountMnt.Register"/>-->  
-            <class name = "TestSuite.AccountMnt.Login"/>
+			<class name = "TestSuite.AccountMnt.Register"/>
+            <!--<class name = "TestSuite.AccountMnt.Login"/> -->  
 
 	        <!--<class name = "TestSuite.ProductMnt.Create"/>  --> 
             <!--<class name = "TestSuite.ProductMnt.Edit"/>-->  
