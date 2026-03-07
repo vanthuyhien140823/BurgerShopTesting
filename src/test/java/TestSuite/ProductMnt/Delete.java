@@ -2,6 +2,7 @@ package TestSuite.ProductMnt;
 
 import java.lang.reflect.Method;
 
+import org.openqa.selenium.By;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -21,7 +22,7 @@ public class Delete extends Initialization {
 	@BeforeMethod()
 	public void setUpMethod(Method method) throws Exception {
 		Utilities.testID = method.getName();
-		Utilities.clickObscuredElement(driver, HomeScreen.PRODUCTS_LINK_XPATH, ListScreen.CREATE_PRODUCT_BTN_XPATH);
+		Utilities.click(driver, By.xpath(HomeScreen.PRODUCTS_LINK_XPATH));
 	}
 
 	@Test(dataProvider = "deleteData", dataProviderClass = DeleteData.class)

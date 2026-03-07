@@ -185,29 +185,53 @@ public class Utilities {
 	}
 
 	// Click one element and wait one element visible one time
-	public static void clickObscuredElement(WebDriver driver, By locator, By newLocator, double waitSecond) {
-		long startTime = System.currentTimeMillis();
-		long timeout = System.currentTimeMillis() - startTime;
-		int waitClick = (int) (Constant.WAIT_INTERVAL * 6);
-		waitForElementClickable(driver, locator, waitClick / 2);
-		while (timeout < waitClick * 1000) {
-			try {
-				WebElement element = driver.findElement(locator);
-				Actions actions = new Actions(driver);
-				actions.moveToElement(element);
-				actions.perform();
-//				element.click();
-				
-				JavascriptExecutor js = (JavascriptExecutor) driver;
-				js.executeScript("arguments[0].click();", element);
-				TimeUnit.SECONDS.sleep(1);
-				break;
-			} catch (Exception e) {
-				printWithTestID(e.toString(), Level.ERROR);
-			}
-			timeout = System.currentTimeMillis() - startTime;
-		}
-        assertElementVisible(driver, newLocator);
+	public static void clickObscuredElement(
+	        WebDriver driver,
+	        By locator,
+	        By newLocator,
+	        double waitSecond) {
+
+	    long startTime = System.currentTimeMillis();
+	    long timeout;
+
+	    WebDriverWait wait = new WebDriverWait(
+	            driver, Duration.ofSeconds((long) waitSecond));
+
+	    while ((timeout = System.currentTimeMillis() - startTime) < waitSecond * 1000) {
+	        try {
+	            // Đợi element tồn tại
+	            WebElement element = wait.until(
+	                    ExpectedConditions.presenceOfElementLocated(locator));
+
+	            // Scroll vào viewport (CỰC KỲ QUAN TRỌNG CHO HEADLESS)
+	            ((JavascriptExecutor) driver).executeScript(
+	                    "arguments[0].scrollIntoView({block:'center', inline:'center'});",
+	                    element);
+
+	            // Đợi clickable
+	            wait.until(ExpectedConditions.elementToBeClickable(locator));
+
+	            // Thử click thường trước
+	            try {
+	                element.click();
+	            } catch (Exception e) {
+	                // Fallback: JS click (headless-safe)
+	                ((JavascriptExecutor) driver)
+	                        .executeScript("arguments[0].click();", element);
+	            }
+
+	            // Đợi element mới xuất hiện
+	            wait.until(ExpectedConditions.visibilityOfElementLocated(newLocator));
+
+	            break; // Thành công
+
+	        } catch (Exception e) {
+	            printWithTestID("Retry clickObscuredElement: " + e.getMessage(), Level.WARN);
+	        }
+	    }
+
+	    // Assert cuối
+	    assertElementVisible(driver, newLocator);
 	}
 
 	// Click one element and wait one element visible, if this element is not visible, click again
@@ -232,7 +256,7 @@ public class Utilities {
 			}
 			timeout = System.currentTimeMillis() - startTime;
 		}
-//		assertElementNotVisible(driver, expectedElementLocator);
+		assertElementNotVisible(driver, expectedElementLocator);
 	}
 
 	// Input data into edit field
@@ -312,6 +336,7 @@ public class Utilities {
 			}
 			assertElementVisible(element);
 		} catch (Exception e) {
+			Utilities.captureScreen(object, "failure");
 			Assert.fail("Element with locator " + locator + " doesn't exist");
 		}
 	}
@@ -423,14 +448,31 @@ public class Utilities {
 		}
 		case Constant.CHROME_BROWSER: {
 			System.setProperty("webdriver.chrome.driver", ChromeDriverPath);
+
 			ChromeOptions options = new ChromeOptions();
-//			options.addArguments("--headless");  // Chạy ẩn
+			options.addArguments("--headless=new");
+			options.addArguments("--disable-gpu");
 			options.addArguments("--no-sandbox");
 			options.addArguments("--disable-dev-shm-usage");
-			options.addArguments("--disable-gpu"); // (Linux thường cần)
-			options.addArguments("--window-size=1920,1080"); // Đảm bảo đủ hiển thị layout
+			options.addArguments("--force-device-scale-factor=1");
+			options.addArguments("--high-dpi-support=1");
+
 			WebDriverManager.chromedriver().setup();
 			driver = new ChromeDriver(options);
+
+			// ÉP viewport bằng CDP (QUAN TRỌNG NHẤT)
+			Map<String, Object> metrics = new HashMap<>();
+			metrics.put("width", 1920);
+			metrics.put("height", 1080);
+			metrics.put("deviceScaleFactor", 1);
+			metrics.put("mobile", false);
+
+			((ChromeDriver) driver)
+			        .executeCdpCommand("Emulation.setDeviceMetricsOverride", metrics);
+
+			// (Optional nhưng nên có) đảm bảo Selenium sync lại window
+			driver.manage().window().setSize(new Dimension(1920, 1080));
+
 			break;
 		}
 		case Constant.FIREFOX_BROWSER: {

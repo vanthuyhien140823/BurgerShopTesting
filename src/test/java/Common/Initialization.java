@@ -20,7 +20,7 @@ public abstract class Initialization{
     }
 
     @AfterClass(alwaysRun = true)
-    public void afterClass() throws Exception{      
+    public void afterClass() throws Exception{ 
         utils.closeDriver(driver);
     }
 }
