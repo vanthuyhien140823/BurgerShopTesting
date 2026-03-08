@@ -5,11 +5,11 @@
     	<parameter name = "browser" value = "Chrome"/>  
     	<classes>
 			 <!--<class name = "TestSuite.AccountMnt.Register"/>-->
-            <class name = "TestSuite.AccountMnt.Login"/> 
+            <!--<class name = "TestSuite.AccountMnt.Login"/>-->   
 
-	        <!--<class name = "TestSuite.ProductMnt.Create"/>-->  
-           <!--<class name = "TestSuite.ProductMnt.Edit"/>  --> 
-             <!--<class name = "TestSuite.ProductMnt.Delete"/>-->   
+	        <class name = "TestSuite.ProductMnt.Create"/>
+           <class name = "TestSuite.ProductMnt.Edit"/>  
+             <class name = "TestSuite.ProductMnt.Delete"/>  
            <!-- <class name = "TestSuite.ProductMnt.Duplicate"/> -->
 		</classes>
 	</test> <!-- Test -->
